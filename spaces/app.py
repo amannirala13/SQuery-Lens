@@ -47,18 +47,35 @@ ENCODERS_PATH = os.path.join(MODEL_DIR, "label_encoders_enhanced.pkl")
 with open(ENCODERS_PATH, 'rb') as f:
     encoders = pickle.load(f)
 
-# Initialize model - use correct encoder keys
+# Get individual encoders for inference
 complexity_encoder = encoders['complexity_encoder']
 category_encoder = encoders['category_encoder']
 table_count_encoder = encoders['table_count_encoder']
 keyword_binarizer = encoders['keyword_binarizer']
 subcategory_binarizer = encoders['subcategory_binarizer']
 
-num_complexity = len(complexity_encoder.classes_)
-num_keywords = len(keyword_binarizer.classes_)
-num_category = len(category_encoder.classes_)
-num_subcategory = len(subcategory_binarizer.classes_)
-num_table_count = len(table_count_encoder.classes_)
+# Full category list from config (model trained with 6 categories)
+CATEGORIES = [
+    "Data Manipulation",
+    "Schema Definition", 
+    "Set Operations",
+    "Transaction Control",
+    "Security",
+    "Procedural SQL"
+]
+
+# Initialize model - get dimensions from checkpoint to match trained model
+checkpoint = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
+state_dict = checkpoint['model_state_dict']
+
+# Extract dimensions from the trained model's state dict
+num_complexity = state_dict['complexity_head.3.weight'].shape[0]
+num_keywords = state_dict['keywords_head.3.weight'].shape[0]
+num_category = state_dict['category_head.3.weight'].shape[0]
+num_subcategory = state_dict['subcategory_head.3.weight'].shape[0]
+num_table_count = state_dict['table_count_head.3.weight'].shape[0]
+
+print(f"Model dimensions: complexity={num_complexity}, keywords={num_keywords}, category={num_category}, subcategory={num_subcategory}, table_count={num_table_count}")
 
 model = EnhancedSQLAnalyzer(
     num_complexity_classes=num_complexity,
@@ -68,9 +85,8 @@ model = EnhancedSQLAnalyzer(
     num_table_counts=num_table_count
 )
 
-# Load weights (weights_only=False needed for PyTorch 2.6+)
-checkpoint = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
-model.load_state_dict(checkpoint['model_state_dict'])
+# Load weights
+model.load_state_dict(state_dict)
 model.to(DEVICE)
 model.eval()
 
@@ -115,20 +131,20 @@ def analyze_query(query: str) -> dict:
     complexity_idx = torch.argmax(complexity_probs, dim=1).item()
     complexity_label = complexity_encoder.inverse_transform([complexity_idx])[0]
     
-    # Process category
+    # Process category (use CATEGORIES list as model has 6, encoder has 3)
     category_probs = torch.softmax(category_logits, dim=1)
     category_idx = torch.argmax(category_probs, dim=1).item()
-    category_label = category_encoder.inverse_transform([category_idx])[0]
+    category_label = CATEGORIES[category_idx] if category_idx < len(CATEGORIES) else f"Category {category_idx}"
     
     # Process keywords (multi-label, threshold=0.5)
     keywords_probs = torch.sigmoid(keywords_logits)
     keywords_mask = (keywords_probs[0] > 0.5).cpu().numpy().astype(int)
-    keywords_labels = keyword_binarizer.inverse_transform([keywords_mask])[0]
+    keywords_labels = keyword_binarizer.inverse_transform(keywords_mask.reshape(1, -1))[0]
     
     # Process subcategories (multi-label, threshold=0.5)
     subcategory_probs = torch.sigmoid(subcategory_logits)
     subcategory_mask = (subcategory_probs[0] > 0.5).cpu().numpy().astype(int)
-    subcategory_labels = subcategory_binarizer.inverse_transform([subcategory_mask])[0]
+    subcategory_labels = subcategory_binarizer.inverse_transform(subcategory_mask.reshape(1, -1))[0]
     
     # Process table count
     table_count_probs = torch.softmax(table_count_logits, dim=1)
@@ -167,7 +183,8 @@ def rank_tables(query: str, tables: str) -> str:
     lines.append("| Rank | Table | Relevance Score |")
     lines.append("|------|-------|-----------------|")
     
-    for i, (table, score) in enumerate(zip(hints.table_names, hints.scores), 1):
+    # hints is iterable - yields (table_name, score) tuples
+    for i, (table, score) in enumerate(hints, 1):
         bar = "█" * int(score * 10) + "░" * (10 - int(score * 10))
         lines.append(f"| {i} | `{table}` | {bar} {score:.2f} |")
     
