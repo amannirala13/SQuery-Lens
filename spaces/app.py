@@ -68,8 +68,8 @@ model = EnhancedSQLAnalyzer(
     num_table_counts=num_table_count
 )
 
-# Load weights
-checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
+# Load weights (weights_only=False needed for PyTorch 2.6+)
+checkpoint = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
 model.load_state_dict(checkpoint['model_state_dict'])
 model.to(DEVICE)
 model.eval()
