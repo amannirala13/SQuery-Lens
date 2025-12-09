@@ -9,6 +9,8 @@ A multi-model system for analyzing natural language queries for SQL generation. 
 | **Query Analyzer** | DistilBERT | 83.2% | Classify query complexity, type, keywords |
 | **Schema Ranker** | Sentence-BERT | 80% recall | Pre-filter tables for RAG systems |
 
+### 🎮 [Try the Interactive Demo →](https://huggingface.co/spaces/amannirala13/squery-lens-demo)
+
 ---
 
 ## 🚀 Quick Start
