@@ -5,9 +5,10 @@ Interactive demo on Hugging Face Spaces
 
 import gradio as gr
 import torch
-from huggingface_hub import hf_hub_download, snapshot_download
+from huggingface_hub import snapshot_download
 import os
 import sys
+import pickle
 
 # Download models from HF Hub on startup
 MODEL_DIR = "./models"
@@ -23,29 +24,115 @@ if not os.path.exists(MODEL_DIR):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import after downloading models
-from src.api.inference import QueryAnalyzer
-from src.schema_ranker import SchemaRanker
+from transformers import DistilBertTokenizer
+from src.model.model import EnhancedSQLClassifier
+from src.schema_ranker.ranker import SchemaRanker
 
-# Initialize models
+# Device configuration
+if torch.backends.mps.is_available():
+    DEVICE = "mps"
+elif torch.cuda.is_available():
+    DEVICE = "cuda"
+else:
+    DEVICE = "cpu"
+
+print(f"Using device: {DEVICE}")
+
+# Load Query Analyzer
 print("Loading Query Analyzer...")
-query_analyzer = QueryAnalyzer()
+MODEL_PATH = os.path.join(MODEL_DIR, "best_model_enhanced.pt")
+ENCODERS_PATH = os.path.join(MODEL_DIR, "label_encoders_enhanced.pkl")
+
+# Load encoders
+with open(ENCODERS_PATH, 'rb') as f:
+    encoders = pickle.load(f)
+
+# Initialize model
+num_complexity = len(encoders['complexity'].classes_)
+num_keywords = len(encoders['keywords'].classes_)
+num_category = len(encoders['category'].classes_)
+num_subcategory = len(encoders['subcategory'].classes_)
+num_table_count = len(encoders['table_count'].classes_)
+
+model = EnhancedSQLClassifier(
+    model_name="distilbert-base-uncased",
+    num_complexity=num_complexity,
+    num_keywords=num_keywords,
+    num_category=num_category,
+    num_subcategory=num_subcategory,
+    num_table_count=num_table_count
+)
+
+# Load weights
+checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
+model.load_state_dict(checkpoint['model_state_dict'])
+model.to(DEVICE)
+model.eval()
+
+tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
 
 print("Loading Schema Ranker...")
-schema_ranker = SchemaRanker()
+schema_ranker = SchemaRanker(
+    model_path=os.path.join(MODEL_DIR, "schema_ranker/schema_ranker_model")
+)
 
 def analyze_query(query: str) -> dict:
     """Analyze a natural language query for SQL generation."""
     if not query.strip():
         return {"error": "Please enter a query"}
     
-    result = query_analyzer.analyze(query)
+    # Tokenize
+    encoding = tokenizer(
+        query,
+        add_special_tokens=True,
+        max_length=256,
+        padding='max_length',
+        truncation=True,
+        return_tensors='pt'
+    )
+    
+    input_ids = encoding['input_ids'].to(DEVICE)
+    attention_mask = encoding['attention_mask'].to(DEVICE)
+    
+    # Get predictions
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask)
+        
+    complexity_logits, keywords_logits, category_logits, subcategory_logits, table_count_logits = outputs
+    
+    # Process complexity
+    complexity_probs = torch.softmax(complexity_logits, dim=1)
+    complexity_idx = torch.argmax(complexity_probs, dim=1).item()
+    complexity_label = encoders['complexity'].inverse_transform([complexity_idx])[0]
+    
+    # Process category
+    category_probs = torch.softmax(category_logits, dim=1)
+    category_idx = torch.argmax(category_probs, dim=1).item()
+    category_label = encoders['category'].inverse_transform([category_idx])[0]
+    
+    # Process keywords (multi-label, threshold=0.5)
+    keywords_probs = torch.sigmoid(keywords_logits)
+    keywords_indices = (keywords_probs[0] > 0.5).nonzero(as_tuple=True)[0].cpu().numpy()
+    keywords_labels = encoders['keywords'].inverse_transform([[1 if i in keywords_indices else 0 for i in range(len(encoders['keywords'].classes_))]])[0]
+    keywords_labels = [k for k, v in zip(encoders['keywords'].classes_, keywords_labels) if v == 1]
+    
+    # Process subcategories (multi-label, threshold=0.5)
+    subcategory_probs = torch.sigmoid(subcategory_logits)
+    subcategory_indices = (subcategory_probs[0] > 0.5).nonzero(as_tuple=True)[0].cpu().numpy()
+    subcategory_labels = encoders['subcategory'].inverse_transform([[1 if i in subcategory_indices else 0 for i in range(len(encoders['subcategory'].classes_))]])[0]
+    subcategory_labels = [k for k, v in zip(encoders['subcategory'].classes_, subcategory_labels) if v == 1]
+    
+    # Process table count
+    table_count_probs = torch.softmax(table_count_logits, dim=1)
+    table_count_idx = torch.argmax(table_count_probs, dim=1).item()
+    table_count_label = encoders['table_count'].inverse_transform([table_count_idx])[0]
     
     return {
-        "🎯 Complexity": f"{result['complexity']['label']} ({result['complexity']['confidence']:.1%})",
-        "📂 Category": f"{result['category']['label']} ({result['category']['confidence']:.1%})",
-        "🏷️ Subcategories": ", ".join(result.get('subcategories', {}).get('labels', [])),
-        "🔑 Keywords": ", ".join(result.get('keywords', {}).get('labels', [])),
-        "📊 Estimated Tables": str(result.get('table_count', {}).get('label', 'N/A'))
+        "🎯 Complexity": f"{complexity_label} ({complexity_probs[0, complexity_idx]:.1%})",
+        "📂 Category": f"{category_label} ({category_probs[0, category_idx]:.1%})",
+        "🏷️ Subcategories": ", ".join(subcategory_labels) if subcategory_labels else "None",
+        "🔑 Keywords": ", ".join(keywords_labels) if keywords_labels else "None",
+        "📊 Estimated Tables": table_count_label
     }
 
 def rank_tables(query: str, tables: str) -> str:
@@ -87,7 +174,7 @@ def combined_analysis(query: str, tables: str) -> tuple:
 # Build Gradio Interface
 with gr.Blocks(
     title="SQuery-Lens",
-    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="cyan"),
+    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"),
     css="""
     .gradio-container { max-width: 1200px !important; }
     .header { text-align: center; margin-bottom: 2rem; }
@@ -168,3 +255,4 @@ with gr.Blocks(
 
 if __name__ == "__main__":
     demo.launch()
+
