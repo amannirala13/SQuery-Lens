@@ -17,9 +17,12 @@ A multi-model system for analyzing natural language queries for SQL generation. 
 # 1. Setup
 ./setup.sh
 
-# 2. Train models
-./train.sh           # Query Analyzer (~16 min)
-./train_ranker.sh    # Schema Ranker (~46 min)
+# 2. Download pre-trained models (recommended)
+huggingface-cli download amannirala13/squery-lens-models --local-dir ./models
+
+# Or train from scratch (~1 hour total)
+# ./train.sh           # Query Analyzer (~16 min)
+# ./train_ranker.sh    # Schema Ranker (~46 min)
 
 # 3. Test
 ./analyze.sh "Find customers who spent more than 1000"
@@ -27,6 +30,21 @@ A multi-model system for analyzing natural language queries for SQL generation. 
 
 # 4. Demo
 python demo_ranker.py
+```
+
+### 📦 Models & Data (Hugging Face Hub)
+
+| Resource | Link | Size |
+|----------|------|------|
+| **Pre-trained Models** | [amannirala13/squery-lens-models](https://huggingface.co/amannirala13/squery-lens-models) | 1.6 GB |
+| **Training Datasets** | [amannirala13/squery-lens-data](https://huggingface.co/datasets/amannirala13/squery-lens-data) | 262 MB |
+
+```bash
+# Download models only
+huggingface-cli download amannirala13/squery-lens-models --local-dir ./models
+
+# Download datasets (for training from scratch)
+huggingface-cli download amannirala13/squery-lens-data --local-dir ./data --repo-type dataset
 ```
 
 ---
