@@ -159,7 +159,7 @@ def analyze_query(query: str) -> dict:
         "📊 Estimated Tables": table_count_label
     }
 
-def rank_tables(query: str, tables: str) -> str:
+def rank_tables(query: str, tables: str, top_k: int = 10) -> str:
     """Rank tables by relevance to a query."""
     if not query.strip():
         return "Please enter a query"
@@ -176,10 +176,10 @@ def rank_tables(query: str, tables: str) -> str:
     schema_ranker.load_schema(table_list)
     
     # Get rankings
-    hints = schema_ranker.get_hints(query, top_k=min(10, len(table_list)))
+    hints = schema_ranker.get_hints(query, top_k=min(top_k, len(table_list)))
     
     # Format output
-    lines = ["### 📊 Table Rankings\n"]
+    lines = [f"### 📊 Table Rankings (Top {min(top_k, len(table_list))} of {len(table_list)})\n"]
     lines.append("| Rank | Table | Relevance Score |")
     lines.append("|------|-------|-----------------|")
     
@@ -190,10 +190,10 @@ def rank_tables(query: str, tables: str) -> str:
     
     return "\n".join(lines)
 
-def combined_analysis(query: str, tables: str) -> tuple:
+def combined_analysis(query: str, tables: str, top_k: int) -> tuple:
     """Run both analysis and ranking."""
     analysis = analyze_query(query)
-    ranking = rank_tables(query, tables) if tables.strip() else "No tables provided for ranking"
+    ranking = rank_tables(query, tables, top_k) if tables.strip() else "No tables provided for ranking"
     return analysis, ranking
 
 # Build Gradio Interface
@@ -228,6 +228,15 @@ with gr.Blocks(
                 label="🗃️ Available Tables (comma-separated)",
                 placeholder="e.g., customers, orders, products, payments, logs",
                 lines=2
+            )
+            
+            top_k_slider = gr.Slider(
+                minimum=5,
+                maximum=50,
+                value=10,
+                step=5,
+                label="🔢 Top-K Results",
+                info="Number of tables to show in ranking"
             )
             
             with gr.Row():
@@ -268,14 +277,14 @@ with gr.Blocks(
     # Event handlers
     analyze_btn.click(
         fn=combined_analysis,
-        inputs=[query_input, tables_input],
+        inputs=[query_input, tables_input, top_k_slider],
         outputs=[analysis_output, ranking_output]
     )
     
     clear_btn.click(
-        fn=lambda: ("", "", {}, ""),
+        fn=lambda: ("", "", 10, {}, ""),
         inputs=[],
-        outputs=[query_input, tables_input, analysis_output, ranking_output]
+        outputs=[query_input, tables_input, top_k_slider, analysis_output, ranking_output]
     )
 
 if __name__ == "__main__":
