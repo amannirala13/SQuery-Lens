@@ -47,12 +47,18 @@ ENCODERS_PATH = os.path.join(MODEL_DIR, "label_encoders_enhanced.pkl")
 with open(ENCODERS_PATH, 'rb') as f:
     encoders = pickle.load(f)
 
-# Initialize model
-num_complexity = len(encoders['complexity'].classes_)
-num_keywords = len(encoders['keywords'].classes_)
-num_category = len(encoders['category'].classes_)
-num_subcategory = len(encoders['subcategory'].classes_)
-num_table_count = len(encoders['table_count'].classes_)
+# Initialize model - use correct encoder keys
+complexity_encoder = encoders['complexity_encoder']
+category_encoder = encoders['category_encoder']
+table_count_encoder = encoders['table_count_encoder']
+keyword_binarizer = encoders['keyword_binarizer']
+subcategory_binarizer = encoders['subcategory_binarizer']
+
+num_complexity = len(complexity_encoder.classes_)
+num_keywords = len(keyword_binarizer.classes_)
+num_category = len(category_encoder.classes_)
+num_subcategory = len(subcategory_binarizer.classes_)
+num_table_count = len(table_count_encoder.classes_)
 
 model = EnhancedSQLAnalyzer(
     num_complexity_classes=num_complexity,
@@ -97,34 +103,37 @@ def analyze_query(query: str) -> dict:
     with torch.no_grad():
         outputs = model(input_ids, attention_mask)
         
-    complexity_logits, keywords_logits, category_logits, subcategory_logits, table_count_logits = outputs
+    # Model returns a dict with keys: complexity, keywords, category, subcategory, table_count, query_embedding
+    complexity_logits = outputs['complexity']
+    keywords_logits = outputs['keywords']
+    category_logits = outputs['category']
+    subcategory_logits = outputs['subcategory']
+    table_count_logits = outputs['table_count']
     
     # Process complexity
     complexity_probs = torch.softmax(complexity_logits, dim=1)
     complexity_idx = torch.argmax(complexity_probs, dim=1).item()
-    complexity_label = encoders['complexity'].inverse_transform([complexity_idx])[0]
+    complexity_label = complexity_encoder.inverse_transform([complexity_idx])[0]
     
     # Process category
     category_probs = torch.softmax(category_logits, dim=1)
     category_idx = torch.argmax(category_probs, dim=1).item()
-    category_label = encoders['category'].inverse_transform([category_idx])[0]
+    category_label = category_encoder.inverse_transform([category_idx])[0]
     
     # Process keywords (multi-label, threshold=0.5)
     keywords_probs = torch.sigmoid(keywords_logits)
-    keywords_indices = (keywords_probs[0] > 0.5).nonzero(as_tuple=True)[0].cpu().numpy()
-    keywords_labels = encoders['keywords'].inverse_transform([[1 if i in keywords_indices else 0 for i in range(len(encoders['keywords'].classes_))]])[0]
-    keywords_labels = [k for k, v in zip(encoders['keywords'].classes_, keywords_labels) if v == 1]
+    keywords_mask = (keywords_probs[0] > 0.5).cpu().numpy().astype(int)
+    keywords_labels = keyword_binarizer.inverse_transform([keywords_mask])[0]
     
     # Process subcategories (multi-label, threshold=0.5)
     subcategory_probs = torch.sigmoid(subcategory_logits)
-    subcategory_indices = (subcategory_probs[0] > 0.5).nonzero(as_tuple=True)[0].cpu().numpy()
-    subcategory_labels = encoders['subcategory'].inverse_transform([[1 if i in subcategory_indices else 0 for i in range(len(encoders['subcategory'].classes_))]])[0]
-    subcategory_labels = [k for k, v in zip(encoders['subcategory'].classes_, subcategory_labels) if v == 1]
+    subcategory_mask = (subcategory_probs[0] > 0.5).cpu().numpy().astype(int)
+    subcategory_labels = subcategory_binarizer.inverse_transform([subcategory_mask])[0]
     
     # Process table count
     table_count_probs = torch.softmax(table_count_logits, dim=1)
     table_count_idx = torch.argmax(table_count_probs, dim=1).item()
-    table_count_label = encoders['table_count'].inverse_transform([table_count_idx])[0]
+    table_count_label = table_count_encoder.inverse_transform([table_count_idx])[0]
     
     return {
         "🎯 Complexity": f"{complexity_label} ({complexity_probs[0, complexity_idx]:.1%})",
