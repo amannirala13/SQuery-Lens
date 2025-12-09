@@ -1,0 +1,153 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.env
+env.bak/
+venv.bak/
+
+# ===========================
+# Jupyter Notebooks
+# ===========================
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# ===========================
+# IDE / Editor
+# ===========================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ===========================
+# macOS
+# ===========================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ===========================
+# ML/Data Science - Models
+# ===========================
+# Model weights (host on Hugging Face Hub instead)
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pkl
+*.joblib
+*.safetensors
+models/
+
+# Hugging Face cache
+.cache/
+*.cache
+
+# TensorBoard logs
+runs/
+tensorboard_logs/
+
+# Weights & Biases
+wandb/
+
+# Model checkpoints
+checkpoints/
+**/checkpoints/
+
+# ===========================
+# Data - Large datasets
+# ===========================
+# Exclude all data files (host on HuggingFace/Kaggle instead)
+data/
+*.csv
+*.parquet
+*.jsonl
+
+# ===========================
+# Project-specific
+# ===========================
+# Logs
+logs/
+*.log
+
+# Local helper files
+.lh/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# ===========================
+# Secrets & Environment
+# ===========================
+.env
+.env.local
+.env.*.local
+secrets.yaml
+secrets.json
+*.pem
+*.key
