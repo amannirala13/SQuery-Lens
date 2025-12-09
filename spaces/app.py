@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import after downloading models
 from transformers import DistilBertTokenizer
-from src.model.model import EnhancedSQLClassifier
+from src.model.model import EnhancedSQLAnalyzer
 from src.schema_ranker.ranker import SchemaRanker
 
 # Device configuration
@@ -54,13 +54,12 @@ num_category = len(encoders['category'].classes_)
 num_subcategory = len(encoders['subcategory'].classes_)
 num_table_count = len(encoders['table_count'].classes_)
 
-model = EnhancedSQLClassifier(
-    model_name="distilbert-base-uncased",
-    num_complexity=num_complexity,
+model = EnhancedSQLAnalyzer(
+    num_complexity_classes=num_complexity,
     num_keywords=num_keywords,
-    num_category=num_category,
-    num_subcategory=num_subcategory,
-    num_table_count=num_table_count
+    num_categories=num_category,
+    num_subcategories=num_subcategory,
+    num_table_counts=num_table_count
 )
 
 # Load weights
